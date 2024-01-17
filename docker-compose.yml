@@ -1,0 +1,46 @@
+version: '3'
+services:
+  matches:
+    image: matches-ms
+    ports:
+      - "5000:5000"
+    networks:
+      - pad
+  matches-db:
+    image: postgres
+    restart: always
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_USER: admin
+      POSTGRES_DB: matches_db
+    hostname: matches-db
+    networks:
+      - pad
+    volumes:
+      - ./init-scripts:/docker-entrypoint-initdb.d
+  weather:
+    image: weather-ms
+    ports:
+      - "5001:5001"
+    networks:
+      - pad
+  weather-db:
+    image: postgres
+    restart: always
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_USER: admin
+      POSTGRES_DB: weather_db
+    hostname: weather-db
+    networks:
+      - pad
+    volumes:
+      - ./init-scripts:/docker-entrypoint-initdb.d
+networks:
+  pad:
+    external:
+      name: pad
