@@ -19,7 +19,7 @@ services:
     networks:
       - pad
     volumes:
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./init-scripts-matches:/docker-entrypoint-initdb.d
   weather:
     image: weather-ms
     ports:
@@ -39,7 +39,7 @@ services:
     networks:
       - pad
     volumes:
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./init-scripts-weather:/docker-entrypoint-initdb.d
 networks:
   pad:
     external:
