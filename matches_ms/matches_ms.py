@@ -183,5 +183,45 @@ def get_following_matches():
         return jsonify({'error_message': str(e), 'status_code': 500})
 
 
+@app.route('/get_match/<string:match_id>', methods=['GET'])
+def get_match_by_id(match_id):
+    try:
+        # Connect to the database
+        db_params = {
+            'host': 'matches-db.pad',
+            'database': 'matches_db',
+            'user': 'admin',
+            'password': 'mysecretpassword',
+            'port': '5432'
+        }
+        db_conn = psycopg2.connect(**db_params)
+        cursor = db_conn.cursor()
+
+        # Query the match by ID
+        cursor.execute("SELECT * FROM matches WHERE uid = %s", (match_id,))
+        match = cursor.fetchone()
+
+        # Close the cursor and database connection
+        cursor.close()
+        db_conn.close()
+
+        if match:
+            # Convert the result to a dictionary
+            match_info = {'uid': match[0],
+                          'date': match[1],
+                          'name': match[2],
+                          'venue': match[3],
+                          'city': match[4],
+                          'state': match[5],
+                          'country': match[6]}
+
+            return jsonify({'match_info': match_info, 'status_code': 200})
+        else:
+            return jsonify({'error_message': f'Match with ID {match_id} not found', 'status_code': 404})
+
+    except Exception as e:
+        return jsonify({'error_message': str(e), 'status_code': 500})
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
