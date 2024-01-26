@@ -1,10 +1,180 @@
 import json
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import psycopg2
 import http.client
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
+
+
+def get_upcoming_matches():
+    try:
+        today_date = datetime.today()
+        year, month, day = today_date.year, today_date.month, today_date.day
+
+        conn = http.client.HTTPSConnection("nhl-api5.p.rapidapi.com")
+
+        headers = {
+            'X-RapidAPI-Key': "f7afb7df79msh96f3073060722fdp1a3006jsne26bb13d9737",
+            'X-RapidAPI-Host': "nhl-api5.p.rapidapi.com"
+        }
+
+        conn.request("GET", f"/nhlschedule?year={year}&month={month:02d}&day={day:02d}", headers=headers)
+
+        res = conn.getresponse()
+        data = res.read().decode("utf-8")
+
+        # Parse JSON data if applicable
+        json_data = json.loads(data)
+
+        games_info = []
+
+        for game_key, game_data in json_data.items():
+            for game in game_data.get('games', []):
+                game_info = {
+                    'date': game.get('date'),
+                    'uid': game.get('uid'),
+                    'name': game.get('name'),
+                    'venue_full_name': game['competitions'][0]['venue']['fullName'],
+                    'city': game['competitions'][0]['venue']['address']['city'],
+                    'state': game['competitions'][0]['venue']['address']['state'],
+                    'country': game['competitions'][0]['venue']['address']['country']
+                }
+                games_info.append(game_info)
+
+        return games_info
+
+    except Exception as e:
+        return {'error_message': str(e), 'status_code': 500}
+
+
+def get_today_matches():
+    today_date = datetime.today().strftime('%Y-%m-%d')
+
+    conn = http.client.HTTPSConnection("nhl-api5.p.rapidapi.com")
+
+    headers = {
+        'X-RapidAPI-Key': "f7afb7df79msh96f3073060722fdp1a3006jsne26bb13d9737",
+        'X-RapidAPI-Host': "nhl-api5.p.rapidapi.com"
+    }
+
+    conn.request("GET", f"/nhlschedule", headers=headers)
+
+    res = conn.getresponse()
+    data = res.read().decode("utf-8")
+
+    matches_data = json.loads(data)
+
+    # Extract relevant information from today's matches
+    today_matches_info = []
+
+    for date_str, date_info in matches_data.items():
+        match_date = datetime.strptime(date_str, '%Y%m%d').strftime('%Y-%m-%d')
+
+        if match_date == today_date:
+            for game_info in date_info.get('games', []):
+                venue_info = game_info.get('competitions', [{}])[0].get('venue', {})
+                teams_info = game_info.get('competitors', [])
+
+                match_info = {
+                    'date': game_info.get('date', ''),
+                    'uid': game_info.get('uid', ''),
+                    'name': game_info.get('name', ''),
+                    'venue_full_name': venue_info.get('fullName', ''),
+                    'city': venue_info.get('address', {}).get('city', ''),
+                    'country': venue_info.get('address', {}).get('country', ''),
+                    'state': venue_info.get('address', {}).get('state', ''),
+                }
+
+                today_matches_info.append(match_info)
+
+    return today_matches_info
+
+
+def get_past_matches_on_date(target_date):
+    target_date_obj = datetime.strptime(target_date, "%d.%m.%Y")
+
+    # Construct the API request parameters
+    year = target_date_obj.year
+    month = target_date_obj.month
+    day = target_date_obj.day
+
+    conn = http.client.HTTPSConnection("nhl-api5.p.rapidapi.com")
+
+    headers = {
+        'X-RapidAPI-Key': "f7afb7df79msh96f3073060722fdp1a3006jsne26bb13d9737",
+        'X-RapidAPI-Host': "nhl-api5.p.rapidapi.com"
+    }
+
+    # conn.request("GET", f"/nhlschedule?year={year}&month={month:02d}&day={day:02d}", headers=headers)
+    conn.request("GET", f"/nhlscoreboard?year={year}&month={month:02d}&day={day:02d}", headers=headers)
+
+    res = conn.getresponse()
+    data = res.read().decode("utf-8")
+
+    response_dict = json.loads(data)
+
+    # Extract relevant information from the response
+    events = response_dict.get('events', [])
+
+    events_data = []
+
+    for event in events:
+        event_data = {
+            'date': event['date'],
+            'uid': event['uid'],
+            'name': event['name'],
+            'venue_full_name': event['competitions'][0]['venue']['fullName'],
+            'city': event['competitions'][0]['venue']['address']['city'],
+            'state': event['competitions'][0]['venue']['address']['state'],
+            'country': event['competitions'][0]['venue']['address']['country']
+        }
+        events_data.append(event_data)
+
+    return events_data
+
+
+def team_info_by_game_id(game_id):
+    conn = http.client.HTTPSConnection("nhl-api5.p.rapidapi.com")
+
+    headers = {
+        'X-RapidAPI-Key': "f7afb7df79msh96f3073060722fdp1a3006jsne26bb13d9737",
+        'X-RapidAPI-Host': "nhl-api5.p.rapidapi.com"
+    }
+
+    conn.request("GET", f"/nhlpicks?id={game_id}", headers=headers)
+
+    res = conn.getresponse()
+    data = res.read().decode("utf-8")
+
+    # Parse the JSON data
+    json_data = json.loads(data)
+
+    # Extract relevant information about the teams
+    leaders = json_data.get('leaders', [])
+    if leaders:
+        team1_info = leaders[0].get('team', {})
+        team2_info = leaders[1].get('team', {})
+
+        team1 = {
+            'team_id': team1_info.get('id', ''),
+            'name': team1_info.get('displayName', ''),
+            'abbreviation': team1_info.get('abbreviation', ''),
+            'logo': team1_info.get('logo', ''),
+            'record': team1_info.get('record', [])
+        }
+
+        team2 = {
+            'team_id': team2_info.get('id', ''),
+            'name': team2_info.get('displayName', ''),
+            'abbreviation': team2_info.get('abbreviation', ''),
+            'logo': team2_info.get('logo', ''),
+        }
+
+        return team1, team2
+    else:
+        return None, None
+
 
 @app.route('/')
 def hello_world():
@@ -45,7 +215,6 @@ def ping_db():
     except psycopg2.Error as e:
         print(f"Error connecting to the database: {e}")
         return str(e), 500
-
 
 
 @app.route('/update')
@@ -138,89 +307,60 @@ def update_db():
         return jsonify({'error_message': str(e), 'status_code': 500})
 
 
-@app.route('/following_matches', methods=['GET'])
-def get_following_matches():
+@app.route('/upcoming_matches', methods=['GET'])
+def upcoming_matches():
     try:
-        # Get the current date
-        today_date = datetime.today()
-
-        # Calculate the end date (5 days from today)
-        end_date = today_date + timedelta(days=5)
-
-        # Connect to the database
-        db_params = {
-            'host': 'matches-db.pad',
-            'database': 'matches_db',
-            'user': 'admin',
-            'password': 'mysecretpassword',
-            'port': '5432'
-        }
-        db_conn = psycopg2.connect(**db_params)
-        cursor = db_conn.cursor()
-
-        # Query upcoming matches within the specified time frame
-        cursor.execute("SELECT * FROM matches WHERE match_date BETWEEN %s AND %s ORDER BY match_date",
-                       (today_date, end_date))
-        upcoming_matches = cursor.fetchall()
-
-        # Close the cursor and database connection
-        cursor.close()
-        db_conn.close()
-
-        # Convert the result to a list of dictionaries
-        matches_info = [{'uid': match[0],
-                         'date': match[1],
-                         'name': match[2],
-                         'venue': match[3],
-                         'city': match[4],
-                         'state': match[5],
-                         'country': match[6]}
-                        for match in upcoming_matches]
-
-        return jsonify({'upcoming_matches': matches_info, 'status_code': 200})
-
+        # Call the get_upcoming_matches function
+        matches_info = get_upcoming_matches()
+        return jsonify(matches_info)
     except Exception as e:
-        return jsonify({'error_message': str(e), 'status_code': 500})
+        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/get_match/<string:match_id>', methods=['GET'])
-def get_match_by_id(match_id):
+@app.route('/today_matches', methods=['GET'])
+def today_matches():
     try:
-        # Connect to the database
-        db_params = {
-            'host': 'matches-db.pad',
-            'database': 'matches_db',
-            'user': 'admin',
-            'password': 'mysecretpassword',
-            'port': '5432'
-        }
-        db_conn = psycopg2.connect(**db_params)
-        cursor = db_conn.cursor()
-
-        # Query the match by ID
-        cursor.execute("SELECT * FROM matches WHERE uid = %s", (match_id,))
-        match = cursor.fetchone()
-
-        # Close the cursor and database connection
-        cursor.close()
-        db_conn.close()
-
-        if match:
-            # Convert the result to a dictionary
-            match_info = {'uid': match[0],
-                          'date': match[1],
-                          'name': match[2],
-                          'venue': match[3],
-                          'city': match[4],
-                          'state': match[5],
-                          'country': match[6]}
-
-            return jsonify({'match_info': match_info, 'status_code': 200})
-        else:
-            return jsonify({'error_message': f'Match with ID {match_id} not found', 'status_code': 404})
-
+        # Call the get_today_matches function
+        matches_info = get_today_matches()
+        return jsonify(matches_info)
     except Exception as e:
-        return jsonify({'error_message': str(e), 'status_code': 500})
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/past_matches', methods=['GET'])
+def past_matches():
+    try:
+        # Get the 'target_date' parameter from the query string
+        target_date = request.args.get('target_date')
+
+        # Validate parameters
+        if not target_date:
+            return jsonify({'error': 'Target date is a required parameter'}), 400
+
+        # Call the get_past_matches_on_date function
+        matches_info = get_past_matches_on_date(target_date)
+        return jsonify(matches_info)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/team_info', methods=['GET'])
+def team_info():
+    try:
+        # Get the 'game_id' parameter from the query string
+        game_id = request.args.get('game_id')
+
+        # Validate parameters
+        if not game_id:
+            return jsonify({'error': 'Game ID is a required parameter'}), 400
+
+        # Call the team_info_by_game_id function
+        team1_info, team2_info = team_info_by_game_id(game_id)
+
+        # Return the team information as JSON
+        return jsonify({'team1': team1_info, 'team2': team2_info})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == "__main__":
