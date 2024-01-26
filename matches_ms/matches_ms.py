@@ -3,8 +3,14 @@ from flask import Flask, jsonify, request
 import psycopg2
 import http.client
 from datetime import datetime, timedelta
+import time
+from prometheus_client import Counter, Gauge, generate_latest
 
 app = Flask(__name__)
+app.config['TIMEOUT'] = 5
+
+# Define Prometheus counters for total requests
+matches_counter = Counter('matches_requests', 'Total number of requests per endpoint', ['endpoint'])
 
 
 def get_upcoming_matches():
@@ -219,6 +225,8 @@ def ping_db():
 
 @app.route('/update')
 def update_db():
+    matches_counter.labels(endpoint='update').inc()
+
     try:
         today_date = datetime.today()
         year = today_date.year
@@ -309,6 +317,7 @@ def update_db():
 
 @app.route('/upcoming_matches', methods=['GET'])
 def upcoming_matches():
+    matches_counter.labels(endpoint='upcoming_matches').inc()
     try:
         # Call the get_upcoming_matches function
         matches_info = get_upcoming_matches()
@@ -319,6 +328,8 @@ def upcoming_matches():
 
 @app.route('/today_matches', methods=['GET'])
 def today_matches():
+    matches_counter.labels(endpoint='today_matches').inc()
+
     try:
         # Call the get_today_matches function
         matches_info = get_today_matches()
@@ -329,6 +340,7 @@ def today_matches():
 
 @app.route('/past_matches', methods=['GET'])
 def past_matches():
+    matches_counter.labels(endpoint='past_matches').inc()
     try:
         # Get the 'target_date' parameter from the query string
         target_date = request.args.get('target_date')
@@ -346,6 +358,8 @@ def past_matches():
 
 @app.route('/team_info', methods=['GET'])
 def team_info():
+    matches_counter.labels(endpoint='team_info').inc()
+
     try:
         # Get the 'game_id' parameter from the query string
         game_id = request.args.get('game_id')
@@ -361,6 +375,12 @@ def team_info():
         return jsonify({'team1': team1_info, 'team2': team2_info})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# Prometheus metrics endpoint
+@app.route('/metrics')
+def metrics():
+    return generate_latest()
 
 
 if __name__ == "__main__":

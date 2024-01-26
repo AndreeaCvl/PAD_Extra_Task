@@ -5,8 +5,13 @@ import psycopg2
 import json
 import http.client
 from datetime import datetime, timezone
+from prometheus_client import Counter, Gauge, generate_latest
+
 
 app = Flask(__name__)
+
+# Define Prometheus counters for total requests
+weather_counter = Counter('weather_forecast_requests_total', 'Total number of weather forecast requests', ['endpoint'])
 
 
 def generate_unique_id():
@@ -66,6 +71,7 @@ def get_weather_forecast(location, date):
     }
 
     return weather_info
+
 
 def get_current_weather(city):
     import http.client
@@ -192,6 +198,7 @@ def get_astro(city, date):
 
     return result_dict
 
+
 def record_exists(location, forecast_date, cursor):
     cursor.execute("SELECT COUNT(*) FROM weather WHERE location = %s AND match_date = %s", (location, forecast_date))
     return cursor.fetchone()[0] > 0
@@ -279,6 +286,8 @@ def ping_db():
 # Define the Flask endpoint for the weather forecast
 @app.route('/weather_forecast', methods=['GET'])
 def weather_forecast():
+    weather_counter.labels(endpoint='weather_forecast').inc()
+
     # Get parameters from the query string
     location = request.args.get('location')
     date = request.args.get('date')
@@ -288,6 +297,10 @@ def weather_forecast():
         return jsonify({'error': 'Location and date are required parameters'}), 400
 
     try:
+
+        # Call the get_weather_forecast function
+        weather_info = get_weather_forecast(location, date)
+
         # Call the get_weather_forecast function
         weather_info = get_weather_forecast(location, date)
 
@@ -302,6 +315,8 @@ def weather_forecast():
 # Define the Flask endpoint for current weather
 @app.route('/current_weather', methods=['GET'])
 def current_weather():
+    weather_counter.labels(endpoint='current_weather').inc()
+
     # Get the 'city' parameter from the query string
     city = request.args.get('city')
 
@@ -319,6 +334,9 @@ def current_weather():
 
 @app.route('/weather_history', methods=['GET'])
 def weather_history():
+
+    weather_counter.labels(endpoint='weather_history').inc()
+
     # Get parameters from the query string
     location = request.args.get('location')
     date = request.args.get('date')
@@ -337,6 +355,9 @@ def weather_history():
 
 @app.route('/astro', methods=['GET'])
 def astro():
+
+    weather_counter.labels(endpoint='astro').inc()
+
     # Get parameters from the query string
     city = request.args.get('city')
     date = request.args.get('date')
@@ -351,6 +372,12 @@ def astro():
         return jsonify(astro_info)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# Prometheus metrics endpoint
+@app.route('/metrics')
+def metrics():
+    return generate_latest()
 
 
 if __name__ == "__main__":
