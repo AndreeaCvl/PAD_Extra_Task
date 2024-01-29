@@ -6,6 +6,7 @@ services:
       - "5000:5000"
     networks:
       - pad
+    hostname: matches-hostname
   matches-db:
     image: postgres
     restart: always
@@ -26,6 +27,7 @@ services:
       - "5001:5001"
     networks:
       - pad
+    hostname: weather-hostname
   weather-db:
     image: postgres
     restart: always
@@ -52,7 +54,12 @@ services:
       - ./datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
     ports:
       - "3000:3000"
-
+  gateway:
+    image: gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - pad
 networks:
   pad:
     external:
