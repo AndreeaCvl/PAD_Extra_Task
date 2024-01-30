@@ -28,6 +28,13 @@ services:
     networks:
       - pad
     hostname: weather-hostname
+  weather2:
+    image: weather-ms
+    ports:
+      - "5003:5001"
+    networks:
+      - pad
+    hostname: weather-hostname-2
   weather-db:
     image: postgres
     restart: always
