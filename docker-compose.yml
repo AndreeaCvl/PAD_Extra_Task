@@ -7,6 +7,13 @@ services:
     networks:
       - pad
     hostname: matches-hostname
+  matches2:
+    image: matches-ms
+    ports:
+      - "5002:5000"
+    networks:
+      - pad
+    hostname: matches-hostname-2
   matches-db:
     image: postgres
     restart: always

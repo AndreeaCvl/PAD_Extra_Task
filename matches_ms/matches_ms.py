@@ -37,16 +37,22 @@ def get_upcoming_matches():
 
         for game_key, game_data in json_data.items():
             for game in game_data.get('games', []):
-                game_info = {
-                    'date': game.get('date'),
-                    'uid': game.get('uid'),
-                    'name': game.get('name'),
-                    'venue_full_name': game['competitions'][0]['venue']['fullName'],
-                    'city': game['competitions'][0]['venue']['address']['city'],
-                    'state': game['competitions'][0]['venue']['address']['state'],
-                    'country': game['competitions'][0]['venue']['address']['country']
-                }
-                games_info.append(game_info)
+                competitions = game.get('competitions', [])
+
+                if competitions:
+                    venue_info = competitions[0].get('venue', {})
+                    address_info = venue_info.get('address', {})
+
+                    game_info = {
+                        'date': game.get('date'),
+                        'uid': game.get('uid'),
+                        'name': game.get('name'),
+                        'venue_full_name': venue_info.get('fullName', ''),
+                        'city': address_info.get('city', ''),
+                        'state': address_info.get('state', ''),
+                        'country': address_info.get('country', '')
+                    }
+                    games_info.append(game_info)
 
         return games_info
 
