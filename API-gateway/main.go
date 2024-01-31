@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 )
 
@@ -376,6 +379,306 @@ func getTeamInfo(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
+type WeatherForecastResponse struct {
+	ForecastDate  string                   `json:"forecast_date"`
+	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
+}
+
+type HourlyWeather struct {
+	ChanceOfRain int     `json:"chance_of_rain"`
+	Cloud        int     `json:"cloud"`
+	Condition    string  `json:"condition"`
+	TempC        float64 `json:"temp_c"`
+	WindMPH      float64 `json:"wind_mph"`
+}
+
+type Match struct {
+	City          string `json:"city"`
+	Country       string `json:"country"`
+	Date          string `json:"date"`
+	Name          string `json:"name"`
+	State         string `json:"state"`
+	UID           string `json:"uid"`
+	VenueFullName string `json:"venue_full_name"`
+}
+
+type WeatherForecastResponseWithInfo struct {
+	City     string                  `json:"city"`
+	UID      string                  `json:"uid"`
+	Forecast WeatherForecastResponse `json:"forecast"`
+}
+
+func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
+	// Step 1: Get upcoming matches
+	matchesURL := MatchesBalancer() + "/upcoming_matches"
+	matchesResp, err := http.Get(matchesURL)
+	if err != nil {
+		http.Error(w, "Error making request to matches_ms for upcoming matches", http.StatusInternalServerError)
+		return
+	}
+	defer matchesResp.Body.Close()
+
+	matchesBody, err := io.ReadAll(matchesResp.Body)
+	if err != nil {
+		http.Error(w, "Error reading response from matches_ms for upcoming matches", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the matches response
+	var matches []Match // Replace Match with the actual struct type for your matches
+	if err := json.Unmarshal(matchesBody, &matches); err != nil {
+		http.Error(w, "Error parsing upcoming matches response", http.StatusInternalServerError)
+		return
+	}
+
+	// Step 2: Get weather forecast for each location
+	var forecasts []WeatherForecastResponseWithInfo
+	for _, match := range matches {
+		// Skip if city is empty
+		if match.City == "" {
+			continue
+		}
+
+		// Replace spaces with "&" for multi-word cities
+		cityQuery := strings.ReplaceAll(match.City, " ", "&")
+
+		weatherURL := RoundRobinBalancer() + "/weather_forecast?location=" + cityQuery + "&date=" + match.Date
+		weatherResp, err := http.Get(weatherURL)
+		if err != nil {
+			http.Error(w, "Error making request to weather microservice", http.StatusInternalServerError)
+			return
+		}
+		defer weatherResp.Body.Close()
+
+		weatherBody, err := io.ReadAll(weatherResp.Body)
+		if err != nil {
+			http.Error(w, "Error reading response from weather microservice", http.StatusInternalServerError)
+			return
+		}
+
+		// Parse the weather response
+		var forecast WeatherForecastResponse
+		if err := json.Unmarshal(weatherBody, &forecast); err != nil {
+			fmt.Printf("Error parsing weather forecast response: %v\n", err)
+			fmt.Printf("Response body: %s\n", string(weatherBody))
+			http.Error(w, "Error parsing weather forecast response", http.StatusInternalServerError)
+			return
+		}
+
+		forecasts = append(forecasts, WeatherForecastResponseWithInfo{
+			City:     match.City,
+			UID:      match.UID,
+			Forecast: forecast,
+		})
+	}
+
+	// Step 3: Return the combined forecast to the user
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(forecasts)
+}
+
+type CurrentWeatherResponse struct {
+	CityName  string  `json:"city_name"`
+	Cloud     int     `json:"cloud"`
+	Condition string  `json:"condition"`
+	Date      string  `json:"date"`
+	Hour      string  `json:"hour"`
+	TempC     float64 `json:"temp_c"`
+	WindMPH   float64 `json:"wind_mph"`
+}
+
+type CombinedPastMatchResponse struct {
+	City          string                   `json:"city"`
+	UID           string                   `json:"uid"`
+	CityName      string                   `json:"city_name"`
+	Date          string                   `json:"date"`
+	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
+}
+
+// GetTodayMatchesAndWeather fetches today's matches and current weather for each city
+func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
+	// Step 1: Get today's matches
+	matchesURL := MatchesBalancer() + "/today_matches"
+	matchesResp, err := http.Get(matchesURL)
+	if err != nil {
+		http.Error(w, "Error making request to matches_ms for today's matches", http.StatusInternalServerError)
+		return
+	}
+	defer matchesResp.Body.Close()
+
+	matchesBody, err := io.ReadAll(matchesResp.Body)
+	if err != nil {
+		http.Error(w, "Error reading response from matches_ms for today's matches", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the matches response
+	var matches []Match // Replace Match with the actual struct type for your matches
+	if err := json.Unmarshal(matchesBody, &matches); err != nil {
+		http.Error(w, "Error parsing today's matches response", http.StatusInternalServerError)
+		return
+	}
+
+	// Step 2: Find unique cities where matches are held
+	citiesMap := make(map[string]bool)
+	for _, match := range matches {
+		citiesMap[match.City] = true
+	}
+
+	// Step 3: Get current weather for each city
+	var weatherResponses []struct {
+		City    string                 `json:"city"`
+		Weather CurrentWeatherResponse `json:"weather"`
+	}
+
+	for city := range citiesMap {
+		// Replace spaces with "&" for multi-word cities
+		cityQuery := strings.ReplaceAll(city, " ", "&")
+
+		weatherURL := RoundRobinBalancer() + "/current_weather?city=" + cityQuery
+		weatherResp, err := http.Get(weatherURL)
+		if err != nil {
+			http.Error(w, "Error making request to weather microservice for current weather", http.StatusInternalServerError)
+			return
+		}
+		defer weatherResp.Body.Close()
+
+		weatherBody, err := io.ReadAll(weatherResp.Body)
+		if err != nil {
+			http.Error(w, "Error reading response from weather microservice for current weather", http.StatusInternalServerError)
+			return
+		}
+
+		// Parse the weather response
+		var currentWeather CurrentWeatherResponse
+		if err := json.Unmarshal(weatherBody, &currentWeather); err != nil {
+			http.Error(w, "Error parsing current weather response", http.StatusInternalServerError)
+			return
+		}
+
+		weatherResponses = append(weatherResponses, struct {
+			City    string                 `json:"city"`
+			Weather CurrentWeatherResponse `json:"weather"`
+		}{
+			City:    city,
+			Weather: currentWeather,
+		})
+	}
+
+	// Step 4: Combine the responses and return to the user
+	response := struct {
+		Weather []struct {
+			City    string                 `json:"city"`
+			Weather CurrentWeatherResponse `json:"weather"`
+		} `json:"weather"`
+	}{
+		Weather: weatherResponses,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+type PastMatch struct {
+	City          string `json:"city"`
+	Country       string `json:"country"`
+	Date          string `json:"date"`
+	Name          string `json:"name"`
+	State         string `json:"state"`
+	UID           string `json:"uid"`
+	VenueFullName string `json:"venue_full_name"`
+}
+
+type WeatherHistoryResponse struct {
+	CityName      string                   `json:"city_name"`
+	Date          string                   `json:"date"`
+	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
+}
+
+// GetPastMatchesMeteo combines past matches and weather history for a specific date
+func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
+	// Get query parameter from the incoming request
+	targetDate := r.URL.Query().Get("date")
+
+	// Validate parameters
+	if targetDate == "" {
+		http.Error(w, "Date is a required parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Step 1: Get past matches
+	matchesURL := MatchesBalancer() + "/past_matches?target_date=" + targetDate
+	matchesResp, err := http.Get(matchesURL)
+	if err != nil {
+		http.Error(w, "Error making request to matches_ms for past matches", http.StatusInternalServerError)
+		return
+	}
+	defer matchesResp.Body.Close()
+
+	matchesBody, err := io.ReadAll(matchesResp.Body)
+	if err != nil {
+		http.Error(w, "Error reading response from matches_ms for past matches", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the matches response
+	var matches []PastMatch
+	if err := json.Unmarshal(matchesBody, &matches); err != nil {
+		http.Error(w, "Error parsing past matches response", http.StatusInternalServerError)
+		return
+	}
+
+	// Step 2: Get weather history for each city
+	var combinedResponses []CombinedPastMatchResponse
+
+	for _, match := range matches {
+		cityName := url.QueryEscape(match.City)
+		cityName = strings.ReplaceAll(cityName, "+", "&")
+
+		weatherURL := RoundRobinBalancer() + "/weather_history?location=" + cityName + "&date=" + match.Date
+		weatherResp, err := http.Get(weatherURL)
+		if err != nil {
+			http.Error(w, "Error making request to weather microservice for weather history", http.StatusInternalServerError)
+			return
+		}
+		defer weatherResp.Body.Close()
+
+		weatherBody, err := io.ReadAll(weatherResp.Body)
+		if err != nil {
+			http.Error(w, "Error reading response from weather microservice for weather history", http.StatusInternalServerError)
+			return
+		}
+
+		// Parse the weather response
+		var weatherHistory WeatherHistoryResponse
+		if err := json.Unmarshal(weatherBody, &weatherHistory); err != nil {
+			http.Error(w, "Error parsing weather history response", http.StatusInternalServerError)
+			return
+		}
+
+		combinedResponses = append(combinedResponses, CombinedPastMatchResponse{
+			City:          match.City,
+			UID:           match.UID,
+			CityName:      weatherHistory.CityName,
+			Date:          weatherHistory.Date,
+			HourlyWeather: weatherHistory.HourlyWeather,
+		})
+	}
+
+	// Step 3: Combine the responses and return to the user
+	response := struct {
+		Weather []CombinedPastMatchResponse `json:"weather_history"`
+	}{
+		Weather: combinedResponses,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
 func main() {
 	http.HandleFunc("/weather/forward_weather_forecast", getWeatherRequest)
 	http.HandleFunc("/weather/get_weather_history", getWeatherHistory)
@@ -386,6 +689,10 @@ func main() {
 	http.HandleFunc("/matches/get_today_matches", getTodayMatches)
 	http.HandleFunc("/matches/past_matches", getPastMatches)
 	http.HandleFunc("/matches/team_info", getTeamInfo)
+
+	http.HandleFunc("/meteo_for_future_matches", getMatchesWeatherForecast)
+	http.HandleFunc("/meteo_for_today_matches", getTodayMatchesAndWeather)
+	http.HandleFunc("/past_matches_meteo", getPastMatchesMeteo)
 
 	fmt.Println("Server is running on http://localhost:8080")
 	err := http.ListenAndServe(":8080", nil)

@@ -40,12 +40,17 @@ def get_upcoming_matches():
                 competitions = game.get('competitions', [])
 
                 if competitions:
+                    a = 5+6
                     venue_info = competitions[0].get('venue', {})
                     address_info = venue_info.get('address', {})
 
+                    uid = game.get('uid').split(':')[-1]  # Extract the last part of UID
+                    date_str = game.get('date')
+                    date = datetime.strptime(date_str, "%Y-%m-%dT%H:%MZ").strftime("%d.%m.%Y")
+
                     game_info = {
-                        'date': game.get('date'),
-                        'uid': game.get('uid'),
+                        'date': date,
+                        'uid': uid,
                         'name': game.get('name'),
                         'venue_full_name': venue_info.get('fullName', ''),
                         'city': address_info.get('city', ''),
@@ -88,9 +93,13 @@ def get_today_matches():
                 venue_info = game_info.get('competitions', [{}])[0].get('venue', {})
                 teams_info = game_info.get('competitors', [])
 
+                uid = game_info.get('uid').split(':')[-1]  # Extract the last part of UID
+                date_str = game_info.get('date')
+                date = datetime.strptime(date_str, "%Y-%m-%dT%H:%MZ").strftime("%d.%m.%Y")
+
                 match_info = {
-                    'date': game_info.get('date', ''),
-                    'uid': game_info.get('uid', ''),
+                    'date': date,
+                    'uid': uid,
                     'name': game_info.get('name', ''),
                     'venue_full_name': venue_info.get('fullName', ''),
                     'city': venue_info.get('address', {}).get('city', ''),
@@ -132,9 +141,12 @@ def get_past_matches_on_date(target_date):
     events_data = []
 
     for event in events:
+        uid = event['uid'].split(':')[-1]  # Extract the last part of UID
+        date_str = event['date']
+        date = datetime.strptime(date_str, "%Y-%m-%dT%H:%MZ").strftime("%d.%m.%Y")
         event_data = {
-            'date': event['date'],
-            'uid': event['uid'],
+            'date': date,
+            'uid': uid,
             'name': event['name'],
             'venue_full_name': event['competitions'][0]['venue']['fullName'],
             'city': event['competitions'][0]['venue']['address']['city'],
