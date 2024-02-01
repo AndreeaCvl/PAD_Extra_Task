@@ -59,6 +59,7 @@ def get_upcoming_matches():
                     }
                     games_info.append(game_info)
 
+        update_db(games_info)
         return games_info
 
     except Exception as e:
@@ -241,33 +242,8 @@ def ping_db():
         return str(e), 500
 
 
-@app.route('/update')
-def update_db():
-    matches_counter.labels(endpoint='update').inc()
-
+def update_db(games_info):
     try:
-        today_date = datetime.today()
-        year = today_date.year
-        month = today_date.month
-        day = today_date.day
-
-        conn = http.client.HTTPSConnection("nhl-api5.p.rapidapi.com")
-
-        headers = {
-            'X-RapidAPI-Key': "f7afb7df79msh96f3073060722fdp1a3006jsne26bb13d9737",
-            'X-RapidAPI-Host': "nhl-api5.p.rapidapi.com"
-        }
-
-        conn.request("GET", f"/nhlschedule?year={year}&month={month:02d}&day={day:02d}", headers=headers)
-
-        res = conn.getresponse()
-        data = res.read().decode("utf-8")
-
-        # Parse JSON data if applicable
-        json_data = json.loads(data)
-
-        games_info = []
-
         for game_key, game_data in json_data.items():
             for game in game_data.get('games', []):
                 game_info = {
