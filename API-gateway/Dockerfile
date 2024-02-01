@@ -7,7 +7,7 @@ COPY . .
 
 # RUN go get -u github.com/gorilla/mux
 # RUN go get -u github.com/go-redis/redis/v8
-# RUN go get -u github.com/afex/hystrix-go/hystrix
+RUN go get -u github.com/afex/hystrix-go/hystrix
 
 RUN go build -o gateway
 

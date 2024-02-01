@@ -3,12 +3,76 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/afex/hystrix-go/hystrix"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 )
+
+type WeatherForecastResponse struct {
+	ForecastDate  string                   `json:"forecast_date"`
+	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
+}
+
+type HourlyWeather struct {
+	ChanceOfRain int     `json:"chance_of_rain"`
+	Cloud        int     `json:"cloud"`
+	Condition    string  `json:"condition"`
+	TempC        float64 `json:"temp_c"`
+	WindMPH      float64 `json:"wind_mph"`
+}
+
+type Match struct {
+	City          string `json:"city"`
+	Country       string `json:"country"`
+	Date          string `json:"date"`
+	Name          string `json:"name"`
+	State         string `json:"state"`
+	UID           string `json:"uid"`
+	VenueFullName string `json:"venue_full_name"`
+}
+
+type WeatherForecastResponseWithInfo struct {
+	City     string                  `json:"city"`
+	UID      string                  `json:"uid"`
+	Forecast WeatherForecastResponse `json:"forecast"`
+}
+
+type CurrentWeatherResponse struct {
+	CityName  string  `json:"city_name"`
+	Cloud     int     `json:"cloud"`
+	Condition string  `json:"condition"`
+	Date      string  `json:"date"`
+	Hour      string  `json:"hour"`
+	TempC     float64 `json:"temp_c"`
+	WindMPH   float64 `json:"wind_mph"`
+}
+
+type CombinedPastMatchResponse struct {
+	City          string                   `json:"city"`
+	UID           string                   `json:"uid"`
+	CityName      string                   `json:"city_name"`
+	Date          string                   `json:"date"`
+	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
+}
+
+type PastMatch struct {
+	City          string `json:"city"`
+	Country       string `json:"country"`
+	Date          string `json:"date"`
+	Name          string `json:"name"`
+	State         string `json:"state"`
+	UID           string `json:"uid"`
+	VenueFullName string `json:"venue_full_name"`
+}
+
+type WeatherHistoryResponse struct {
+	CityName      string                   `json:"city_name"`
+	Date          string                   `json:"date"`
+	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
+}
 
 var (
 	weatherHostnames = []string{"http://weather-hostname.pad:5001", "http://weather-hostname-2.pad:5001"}
@@ -71,26 +135,42 @@ func getWeatherRequest(w http.ResponseWriter, r *http.Request) {
 	q.Add("date", date)
 	req.URL.RawQuery = q.Encode()
 
-	// Make the request to the Flask microservice
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error making request to Flask microservice", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getWeatherRequest", hystrix.CommandConfig{
+		Timeout:               20000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,   // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
 
-	// Read the response from the Flask microservice
-	body, err := io.ReadAll(resp.Body)
+	var resp *http.Response
+	var body []byte
+	err = hystrix.Do("getWeatherRequest", func() error {
+		// Make the request to the Flask microservice
+		client := http.Client{}
+		resp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the Flask microservice
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from Flask microservice", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to Flask microservice", http.StatusInternalServerError)
 		return
 	}
 
 	// Forward the response to the client
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
-
 }
 
 // GetCurrentWeather connects to the Flask microservice's /current_weather endpoint
@@ -120,19 +200,36 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 	q.Add("city", city)
 	req.URL.RawQuery = q.Encode()
 
-	// Make the request to the Flask microservice for current weather
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error making request to Flask microservice for current weather", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getCurrentWeather", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,   // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
 
-	// Read the response from the Flask microservice for current weather
-	body, err := io.ReadAll(resp.Body)
+	var resp *http.Response
+	var body []byte
+	err = hystrix.Do("getCurrentWeather", func() error {
+		// Make the request to the Flask microservice for current weather
+		client := http.Client{}
+		resp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the Flask microservice for current weather
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from Flask microservice for current weather", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to Flask microservice for current weather", http.StatusInternalServerError)
 		return
 	}
 
@@ -170,19 +267,36 @@ func getWeatherHistory(w http.ResponseWriter, r *http.Request) {
 	q.Add("date", date)
 	req.URL.RawQuery = q.Encode()
 
-	// Make the request to the Flask microservice for weather history
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error making request to Flask microservice for weather history", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getWeatherHistory", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,   // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
 
-	// Read the response from the Flask microservice for weather history
-	body, err := io.ReadAll(resp.Body)
+	var resp *http.Response
+	var body []byte
+	err = hystrix.Do("getWeatherHistory", func() error {
+		// Make the request to the Flask microservice for weather history
+		client := http.Client{}
+		resp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the Flask microservice for weather history
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from Flask microservice for weather history", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to Flask microservice for weather history", http.StatusInternalServerError)
 		return
 	}
 
@@ -220,19 +334,36 @@ func getAstroInfo(w http.ResponseWriter, r *http.Request) {
 	q.Add("date", date)
 	req.URL.RawQuery = q.Encode()
 
-	// Make the request to the Flask microservice for astro information
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error making request to Flask microservice for astro information", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getAstroInfo", hystrix.CommandConfig{
+		Timeout:               1000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,  // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,   // Error percentage threshold for circuit breaker
+	})
 
-	// Read the response from the Flask microservice for astro information
-	body, err := io.ReadAll(resp.Body)
+	var resp *http.Response
+	var body []byte
+	err = hystrix.Do("getAstroInfo", func() error {
+		// Make the request to the Flask microservice for astro information
+		client := http.Client{}
+		resp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the Flask microservice for astro information
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from Flask microservice for astro information", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to Flask microservice for astro information", http.StatusInternalServerError)
 		return
 	}
 
@@ -241,22 +372,40 @@ func getAstroInfo(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
-// Function to fetch upcoming matches from matches_ms
+// GetUpcomingMatches connects to the matches microservice's /upcoming_matches endpoint
 func getUpcomingMatches(w http.ResponseWriter, r *http.Request) {
 	url := MatchesBalancer() + "/upcoming_matches"
 
-	client := http.Client{}
-	resp, err := client.Get(url)
-	if err != nil {
-		http.Error(w, "Error making request to matches_ms for upcoming matches", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getUpcomingMatches", hystrix.CommandConfig{
+		Timeout:               20000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,   // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
 
-	// Read the response from the matches_ms
-	body, err := io.ReadAll(resp.Body)
+	var resp *http.Response
+	var body []byte
+	err := hystrix.Do("getUpcomingMatches", func() error {
+		// Make the request to the matches microservice for upcoming matches
+		client := http.Client{}
+		resp, err := client.Get(url)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the matches microservice for upcoming matches
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from matches_ms for upcoming matches", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to matches microservice for upcoming matches", http.StatusInternalServerError)
 		return
 	}
 
@@ -265,21 +414,40 @@ func getUpcomingMatches(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
+// GetTodayMatches connects to the matches microservice's /today_matches endpoint
 func getTodayMatches(w http.ResponseWriter, r *http.Request) {
 	url := MatchesBalancer() + "/today_matches"
 
-	client := http.Client{}
-	resp, err := client.Get(url)
-	if err != nil {
-		http.Error(w, "Error making request to matches_ms for today's matches", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getTodayMatches", hystrix.CommandConfig{
+		Timeout:               8000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,  // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,   // Error percentage threshold for circuit breaker
+	})
 
-	// Read the response from matches_ms
-	body, err := io.ReadAll(resp.Body)
+	var resp *http.Response
+	var body []byte
+	err := hystrix.Do("getTodayMatches", func() error {
+		// Make the request to the matches microservice for today's matches
+		client := http.Client{}
+		resp, err := client.Get(url)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the matches microservice for today's matches
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from matches_ms for today's matches", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to matches microservice for today's matches", http.StatusInternalServerError)
 		return
 	}
 
@@ -288,7 +456,7 @@ func getTodayMatches(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
-// GetPastMatches connects to the Flask microservice's /past_matches endpoint
+// GetPastMatches connects to the matches microservice's /past_matches endpoint
 func getPastMatches(w http.ResponseWriter, r *http.Request) {
 	url := MatchesBalancer() + "/past_matches"
 
@@ -301,31 +469,47 @@ func getPastMatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a new request to the Flask microservice for past matches
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		http.Error(w, "Error creating request for past matches", http.StatusInternalServerError)
-		return
-	}
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getPastMatches", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,   // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
 
-	// Set query parameters for past matches
-	q := req.URL.Query()
-	q.Add("target_date", targetDate)
-	req.URL.RawQuery = q.Encode()
+	var resp *http.Response
+	var body []byte
+	err := hystrix.Do("getPastMatches", func() error {
+		// Create a new request to the matches microservice for past matches
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
 
-	// Make the request to the Flask microservice for past matches
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error making request to Flask microservice for past matches", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+		// Set query parameters for past matches
+		q := req.URL.Query()
+		q.Add("target_date", targetDate)
+		req.URL.RawQuery = q.Encode()
 
-	// Read the response from the Flask microservice for past matches
-	body, err := io.ReadAll(resp.Body)
+		// Make the request to the matches microservice for past matches
+		client := http.Client{}
+		resp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the matches microservice for past matches
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from Flask microservice for past matches", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to matches microservice for past matches", http.StatusInternalServerError)
 		return
 	}
 
@@ -334,6 +518,7 @@ func getPastMatches(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
+// GetTeamInfo connects to the matches microservice's /team_info endpoint
 func getTeamInfo(w http.ResponseWriter, r *http.Request) {
 	url := MatchesBalancer() + "/team_info"
 
@@ -346,31 +531,47 @@ func getTeamInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a new request to the Flask microservice for team info
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		http.Error(w, "Error creating request for team info", http.StatusInternalServerError)
-		return
-	}
+	// Wrap the HTTP request in a Hystrix command
+	hystrix.ConfigureCommand("getTeamInfo", hystrix.CommandConfig{
+		Timeout:               8000, // Timeout in milliseconds
+		MaxConcurrentRequests: 100,  // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,   // Error percentage threshold for circuit breaker
+	})
 
-	// Set query parameters for team info
-	q := req.URL.Query()
-	q.Add("game_id", gameID)
-	req.URL.RawQuery = q.Encode()
+	var resp *http.Response
+	var body []byte
+	err := hystrix.Do("getTeamInfo", func() error {
+		// Create a new request to the matches microservice for team info
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
 
-	// Make the request to the Flask microservice for team info
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error making request to Flask microservice for team info", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+		// Set query parameters for team info
+		q := req.URL.Query()
+		q.Add("game_id", gameID)
+		req.URL.RawQuery = q.Encode()
 
-	// Read the response from the Flask microservice for team info
-	body, err := io.ReadAll(resp.Body)
+		// Make the request to the matches microservice for team info
+		client := http.Client{}
+		resp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Read the response from the matches microservice for team info
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, nil)
+
 	if err != nil {
-		http.Error(w, "Error reading response from Flask microservice for team info", http.StatusInternalServerError)
+		// Handle the error, possibly returning an HTTP error response
+		http.Error(w, "Error making request to matches microservice for team info", http.StatusInternalServerError)
 		return
 	}
 
@@ -379,39 +580,32 @@ func getTeamInfo(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
-type WeatherForecastResponse struct {
-	ForecastDate  string                   `json:"forecast_date"`
-	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
-}
-
-type HourlyWeather struct {
-	ChanceOfRain int     `json:"chance_of_rain"`
-	Cloud        int     `json:"cloud"`
-	Condition    string  `json:"condition"`
-	TempC        float64 `json:"temp_c"`
-	WindMPH      float64 `json:"wind_mph"`
-}
-
-type Match struct {
-	City          string `json:"city"`
-	Country       string `json:"country"`
-	Date          string `json:"date"`
-	Name          string `json:"name"`
-	State         string `json:"state"`
-	UID           string `json:"uid"`
-	VenueFullName string `json:"venue_full_name"`
-}
-
-type WeatherForecastResponseWithInfo struct {
-	City     string                  `json:"city"`
-	UID      string                  `json:"uid"`
-	Forecast WeatherForecastResponse `json:"forecast"`
-}
-
 func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
+	// Configure Hystrix settings for "getMatches" command
+	hystrix.ConfigureCommand("getMatches", hystrix.CommandConfig{
+		Timeout:               20000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,    // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold
+	})
+
+	// Configure Hystrix settings for "getWeather" command
+	hystrix.ConfigureCommand("getWeather", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,    // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold
+	})
+
 	// Step 1: Get upcoming matches
 	matchesURL := MatchesBalancer() + "/upcoming_matches"
-	matchesResp, err := http.Get(matchesURL)
+	var matchesResp *http.Response
+	err := hystrix.Do("getMatches", func() error {
+		resp, err := http.Get(matchesURL)
+		if err != nil {
+			return err
+		}
+		matchesResp = resp
+		return nil
+	}, nil)
 	if err != nil {
 		http.Error(w, "Error making request to matches_ms for upcoming matches", http.StatusInternalServerError)
 		return
@@ -423,7 +617,6 @@ func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading response from matches_ms for upcoming matches", http.StatusInternalServerError)
 		return
 	}
-
 	// Parse the matches response
 	var matches []Match // Replace Match with the actual struct type for your matches
 	if err := json.Unmarshal(matchesBody, &matches); err != nil {
@@ -443,7 +636,15 @@ func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
 		cityQuery := strings.ReplaceAll(match.City, " ", "&")
 
 		weatherURL := RoundRobinBalancer() + "/weather_forecast?location=" + cityQuery + "&date=" + match.Date
-		weatherResp, err := http.Get(weatherURL)
+		var weatherResp *http.Response
+		err := hystrix.Do("getWeather", func() error {
+			resp, err := http.Get(weatherURL)
+			if err != nil {
+				return err
+			}
+			weatherResp = resp
+			return nil
+		}, nil)
 		if err != nil {
 			http.Error(w, "Error making request to weather microservice", http.StatusInternalServerError)
 			return
@@ -478,29 +679,23 @@ func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(forecasts)
 }
 
-type CurrentWeatherResponse struct {
-	CityName  string  `json:"city_name"`
-	Cloud     int     `json:"cloud"`
-	Condition string  `json:"condition"`
-	Date      string  `json:"date"`
-	Hour      string  `json:"hour"`
-	TempC     float64 `json:"temp_c"`
-	WindMPH   float64 `json:"wind_mph"`
-}
-
-type CombinedPastMatchResponse struct {
-	City          string                   `json:"city"`
-	UID           string                   `json:"uid"`
-	CityName      string                   `json:"city_name"`
-	Date          string                   `json:"date"`
-	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
-}
-
-// GetTodayMatchesAndWeather fetches today's matches and current weather for each city
 func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
-	// Step 1: Get today's matches
-	matchesURL := MatchesBalancer() + "/today_matches"
-	matchesResp, err := http.Get(matchesURL)
+	// Configure Hystrix for the "get-today-matches" command
+	hystrix.ConfigureCommand("get-today-matches", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,    // Max concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
+
+	// Step 1: Get today's matches using Hystrix
+	var matchesResp *http.Response
+	err := hystrix.Do("get-today-matches", func() error {
+		var err error
+		matchesURL := MatchesBalancer() + "/today_matches"
+		matchesResp, err = http.Get(matchesURL)
+		return err
+	}, nil)
+
 	if err != nil {
 		http.Error(w, "Error making request to matches_ms for today's matches", http.StatusInternalServerError)
 		return
@@ -526,44 +721,59 @@ func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
 		citiesMap[match.City] = true
 	}
 
-	// Step 3: Get current weather for each city
+	// Step 3: Get current weather for each city using Hystrix
 	var weatherResponses []struct {
 		City    string                 `json:"city"`
 		Weather CurrentWeatherResponse `json:"weather"`
 	}
 
+	// Configure Hystrix for the "get-current-weather" command
+	hystrix.ConfigureCommand("get-current-weather", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,    // Max concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
+
 	for city := range citiesMap {
 		// Replace spaces with "&" for multi-word cities
 		cityQuery := strings.ReplaceAll(city, " ", "&")
 
-		weatherURL := RoundRobinBalancer() + "/current_weather?city=" + cityQuery
-		weatherResp, err := http.Get(weatherURL)
+		// Use Hystrix for the weather request
+		err := hystrix.Do("get-current-weather", func() error {
+			var err error
+			weatherURL := RoundRobinBalancer() + "/current_weather?city=" + cityQuery
+			weatherResp, err := http.Get(weatherURL)
+			if err != nil {
+				return err
+			}
+			defer weatherResp.Body.Close()
+
+			weatherBody, err := io.ReadAll(weatherResp.Body)
+			if err != nil {
+				return err
+			}
+
+			// Parse the weather response
+			var currentWeather CurrentWeatherResponse
+			if err := json.Unmarshal(weatherBody, &currentWeather); err != nil {
+				return err
+			}
+
+			weatherResponses = append(weatherResponses, struct {
+				City    string                 `json:"city"`
+				Weather CurrentWeatherResponse `json:"weather"`
+			}{
+				City:    city,
+				Weather: currentWeather,
+			})
+
+			return nil
+		}, nil)
+
 		if err != nil {
 			http.Error(w, "Error making request to weather microservice for current weather", http.StatusInternalServerError)
 			return
 		}
-		defer weatherResp.Body.Close()
-
-		weatherBody, err := io.ReadAll(weatherResp.Body)
-		if err != nil {
-			http.Error(w, "Error reading response from weather microservice for current weather", http.StatusInternalServerError)
-			return
-		}
-
-		// Parse the weather response
-		var currentWeather CurrentWeatherResponse
-		if err := json.Unmarshal(weatherBody, &currentWeather); err != nil {
-			http.Error(w, "Error parsing current weather response", http.StatusInternalServerError)
-			return
-		}
-
-		weatherResponses = append(weatherResponses, struct {
-			City    string                 `json:"city"`
-			Weather CurrentWeatherResponse `json:"weather"`
-		}{
-			City:    city,
-			Weather: currentWeather,
-		})
 	}
 
 	// Step 4: Combine the responses and return to the user
@@ -581,23 +791,6 @@ func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-type PastMatch struct {
-	City          string `json:"city"`
-	Country       string `json:"country"`
-	Date          string `json:"date"`
-	Name          string `json:"name"`
-	State         string `json:"state"`
-	UID           string `json:"uid"`
-	VenueFullName string `json:"venue_full_name"`
-}
-
-type WeatherHistoryResponse struct {
-	CityName      string                   `json:"city_name"`
-	Date          string                   `json:"date"`
-	HourlyWeather map[string]HourlyWeather `json:"hourly_weather"`
-}
-
-// GetPastMatchesMeteo combines past matches and weather history for a specific date
 func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
 	// Get query parameter from the incoming request
 	targetDate := r.URL.Query().Get("date")
@@ -608,9 +801,22 @@ func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 1: Get past matches
-	matchesURL := MatchesBalancer() + "/past_matches?target_date=" + targetDate
-	matchesResp, err := http.Get(matchesURL)
+	// Configure Hystrix for the "get-past-matches" command
+	hystrix.ConfigureCommand("get-past-matches", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,    // Max concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
+
+	// Step 1: Get past matches using Hystrix
+	var matchesResp *http.Response
+	err := hystrix.Do("get-past-matches", func() error {
+		var err error
+		matchesURL := MatchesBalancer() + "/past_matches?target_date=" + targetDate
+		matchesResp, err = http.Get(matchesURL)
+		return err
+	}, nil)
+
 	if err != nil {
 		http.Error(w, "Error making request to matches_ms for past matches", http.StatusInternalServerError)
 		return
@@ -630,41 +836,57 @@ func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 2: Get weather history for each city
+	// Step 2: Get weather history for each city using Hystrix
 	var combinedResponses []CombinedPastMatchResponse
 
+	// Configure Hystrix for the "get-weather-history" command
+	hystrix.ConfigureCommand("get-weather-history", hystrix.CommandConfig{
+		Timeout:               10000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,    // Max concurrent requests
+		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
+	})
+
 	for _, match := range matches {
+		// Escape and replace spaces with "&" for multi-word cities
 		cityName := url.QueryEscape(match.City)
 		cityName = strings.ReplaceAll(cityName, "+", "&")
 
-		weatherURL := RoundRobinBalancer() + "/weather_history?location=" + cityName + "&date=" + match.Date
-		weatherResp, err := http.Get(weatherURL)
+		// Use Hystrix for the weather history request
+		err := hystrix.Do("get-weather-history", func() error {
+			var err error
+			weatherURL := RoundRobinBalancer() + "/weather_history?location=" + cityName + "&date=" + match.Date
+			weatherResp, err := http.Get(weatherURL)
+			if err != nil {
+				return err
+			}
+			defer weatherResp.Body.Close()
+
+			weatherBody, err := io.ReadAll(weatherResp.Body)
+			if err != nil {
+				return err
+			}
+
+			// Parse the weather response
+			var weatherHistory WeatherHistoryResponse
+			if err := json.Unmarshal(weatherBody, &weatherHistory); err != nil {
+				return err
+			}
+
+			combinedResponses = append(combinedResponses, CombinedPastMatchResponse{
+				City:          match.City,
+				UID:           match.UID,
+				CityName:      weatherHistory.CityName,
+				Date:          weatherHistory.Date,
+				HourlyWeather: weatherHistory.HourlyWeather,
+			})
+
+			return nil
+		}, nil)
+
 		if err != nil {
 			http.Error(w, "Error making request to weather microservice for weather history", http.StatusInternalServerError)
 			return
 		}
-		defer weatherResp.Body.Close()
-
-		weatherBody, err := io.ReadAll(weatherResp.Body)
-		if err != nil {
-			http.Error(w, "Error reading response from weather microservice for weather history", http.StatusInternalServerError)
-			return
-		}
-
-		// Parse the weather response
-		var weatherHistory WeatherHistoryResponse
-		if err := json.Unmarshal(weatherBody, &weatherHistory); err != nil {
-			http.Error(w, "Error parsing weather history response", http.StatusInternalServerError)
-			return
-		}
-
-		combinedResponses = append(combinedResponses, CombinedPastMatchResponse{
-			City:          match.City,
-			UID:           match.UID,
-			CityName:      weatherHistory.CityName,
-			Date:          weatherHistory.Date,
-			HourlyWeather: weatherHistory.HourlyWeather,
-		})
 	}
 
 	// Step 3: Combine the responses and return to the user
