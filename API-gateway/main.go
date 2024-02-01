@@ -386,9 +386,13 @@ func getUpcomingMatches(w http.ResponseWriter, r *http.Request) {
 	var resp *http.Response
 	var body []byte
 	err := hystrix.Do("getUpcomingMatches", func() error {
-		// Make the request to the matches microservice for upcoming matches
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
+		// Make the request to the matches microservice for today's matches
 		client := http.Client{}
-		resp, err := client.Get(url)
+		resp, err = client.Do(req)
 		if err != nil {
 			return err
 		}
@@ -428,9 +432,13 @@ func getTodayMatches(w http.ResponseWriter, r *http.Request) {
 	var resp *http.Response
 	var body []byte
 	err := hystrix.Do("getTodayMatches", func() error {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
 		// Make the request to the matches microservice for today's matches
 		client := http.Client{}
-		resp, err := client.Get(url)
+		resp, err = client.Do(req)
 		if err != nil {
 			return err
 		}
