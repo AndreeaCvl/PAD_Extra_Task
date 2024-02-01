@@ -374,6 +374,11 @@ def astro():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/status', methods=['GET'])
+def status():
+    return jsonify({'status': 'OK'})
+
+
 # Prometheus metrics endpoint
 @app.route('/metrics')
 def metrics():

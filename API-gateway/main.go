@@ -909,6 +909,51 @@ func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// HealthCheckResponse represents the response for the health check endpoint
+type HealthCheckResponse struct {
+	Status string `json:"status"`
+}
+
+// healthCheckHandler checks the health of the gateway and its connections to microservices
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	gatewayStatus := "ok"
+
+	// Check the health of weather microservices
+	weatherHealth := checkMicroserviceHealth(weatherHostnames)
+	if !weatherHealth {
+		gatewayStatus = "unhealthy"
+	}
+
+	// Check the health of matches microservices
+	matchesHealth := checkMicroserviceHealth(matchesHostnames)
+	if !matchesHealth {
+		gatewayStatus = "unhealthy"
+	}
+
+	// Respond with the overall status
+	response := HealthCheckResponse{
+		Status: gatewayStatus,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// checkMicroserviceHealth checks the health of a microservice by sending a simple request
+func checkMicroserviceHealth(endpoints []string) bool {
+
+	for _, endpoint := range endpoints {
+		resp, err := http.Get(endpoint + "/status")
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		defer resp.Body.Close()
+	}
+
+	return true
+}
+
 func main() {
 	http.HandleFunc("/weather/forward_weather_forecast", getWeatherRequest)
 	http.HandleFunc("/weather/get_weather_history", getWeatherHistory)
@@ -923,6 +968,8 @@ func main() {
 	http.HandleFunc("/meteo_for_future_matches", getMatchesWeatherForecast)
 	http.HandleFunc("/meteo_for_today_matches", getTodayMatchesAndWeather)
 	http.HandleFunc("/past_matches_meteo", getPastMatchesMeteo)
+
+	http.HandleFunc("/status", healthCheckHandler)
 
 	fmt.Println("Server is running on http://localhost:8080")
 	err := http.ListenAndServe(":8080", nil)
