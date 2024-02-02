@@ -14,6 +14,13 @@ services:
     networks:
       - pad
     hostname: matches-hostname-2
+  matches3:
+    image: matches-ms
+    ports:
+      - "5004:5000"
+    networks:
+      - pad
+    hostname: matches-hostname-3
   matches-db:
     image: postgres
     restart: always
@@ -42,6 +49,13 @@ services:
     networks:
       - pad
     hostname: weather-hostname-2
+  weather3:
+    image: weather-ms
+    ports:
+      - "5005:5001"
+    networks:
+      - pad
+    hostname: weather-hostname-3
   weather-db:
     image: postgres
     restart: always

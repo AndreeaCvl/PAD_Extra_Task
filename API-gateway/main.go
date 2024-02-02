@@ -78,13 +78,15 @@ type WeatherHistoryResponse struct {
 }
 
 var (
-	weatherHostnames = []string{"http://weather-hostname.pad:5001", "http://weather-hostname-2.pad:5001"}
-	currentIndex     = 0
-	mu               sync.Mutex
+	weatherHostnames = []string{"http://weather-hostname.pad:5001", "http://weather-hostname-2.pad:5001",
+		"http://weather-hostname-3.pad:5001"}
+	currentIndex = 0
+	mu           sync.Mutex
 )
 
 var (
-	matchesHostnames    = []string{"http://matches-hostname.pad:5000", "http://matches-hostname-2.pad:5000"}
+	matchesHostnames = []string{"http://matches-hostname.pad:5000", "http://matches-hostname-2.pad:5000",
+		"http://matches-hostname-3.pad:5000"}
 	matchesCurrentIndex = 0
 	matchesMu           sync.Mutex
 )
