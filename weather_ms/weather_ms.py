@@ -283,6 +283,48 @@ def ping_db():
         return str(e), 500
 
 
+@app.route('/get_all_records', methods=['GET'])
+def get_all_records():
+    try:
+        # Database connection parameters
+        db_params = {
+            'host': 'weather-db.pad',
+            'database': 'weather_db',
+            'user': 'admin',
+            'password': 'mysecretpassword',
+            'port': '5432'
+        }
+
+        # Establish the database connection
+        connection = psycopg2.connect(**db_params)
+        cursor = connection.cursor()
+
+        # Fetch all records from the 'weather' table
+        cursor.execute("SELECT * FROM weather")
+        records = cursor.fetchall()
+
+        # Convert the records to a list of dictionaries
+        records_list = []
+        for record in records:
+            record_dict = {
+                'id': record[0],
+                'forecast_date': record[1].isoformat(),
+                'location': record[2],
+                'hourly_weather': record[3]
+            }
+            records_list.append(record_dict)
+
+        # Close cursor and connection
+        cursor.close()
+        connection.close()
+
+        return jsonify(records_list)
+
+    except Exception as e:
+        return jsonify({'error': f'Error fetching records from the database: {e}'})
+
+
+
 # Define the Flask endpoint for the weather forecast
 @app.route('/weather_forecast', methods=['GET'])
 def weather_forecast():

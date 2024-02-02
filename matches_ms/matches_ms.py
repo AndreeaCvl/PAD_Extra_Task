@@ -242,22 +242,10 @@ def ping_db():
         return str(e), 500
 
 
-def update_db(games_info):
+# Add a new route for retrieving all records
+@app.route('/get_all_records', methods=['GET'])
+def get_all_records():
     try:
-        for game_key, game_data in json_data.items():
-            for game in game_data.get('games', []):
-                game_info = {
-                    'date': game.get('date'),
-                    'uid': game.get('uid'),
-                    'name': game.get('name'),
-                    'venue_full_name': game['competitions'][0]['venue']['fullName'],
-                    'city': game['competitions'][0]['venue']['address']['city'],
-                    'state': game['competitions'][0]['venue']['address']['state'],
-                    'country': game['competitions'][0]['venue']['address']['country']
-                    ,
-                }
-                games_info.append(game_info)
-
         db_params = {
             'host': 'matches-db.pad',
             'database': 'matches_db',
@@ -266,28 +254,61 @@ def update_db(games_info):
             'port': '5432'
         }
 
-        #dsn = f"host={db_params['host']} dbname={db_params['database']} user={db_params['user']} password={db_params['password']} port={db_params['port']}"
         db_conn = psycopg2.connect(**db_params)
         cursor = db_conn.cursor()
 
-        # Print the extracted information
-        for game_info in games_info:
-            print("Date:", game_info["date"])
-            print("UID:", game_info["uid"])
+        cursor.execute("SELECT * FROM matches")
+        records = cursor.fetchall()
 
-            cursor.execute(("SELECT uid FROM matches WHERE uid = %s"), (game_info['uid'],))
+        # Transform the records into a list of dictionaries for easy JSON serialization
+        result = []
+        for record in records:
+            result.append({
+                'uid': record[0],
+                'date': record[1],
+                'name': record[2],
+                'venue': record[3],
+                'city': record[4],
+                'state': record[5],
+                'country': record[6]
+            })
+
+        cursor.close()
+        db_conn.close()
+
+        return jsonify({'records': result, 'status_code': 200})
+
+    except Exception as e:
+        return jsonify({'error_message': str(e), 'status_code': 500})
+
+
+def update_db(games_info):
+    try:
+        db_params = {
+            'host': 'matches-db.pad',
+            'database': 'matches_db',
+            'user': 'admin',
+            'password': 'mysecretpassword',
+            'port': '5432'
+        }
+
+        db_conn = psycopg2.connect(**db_params)
+        cursor = db_conn.cursor()
+
+        for game_info in games_info:
+            cursor.execute("SELECT uid FROM matches WHERE uid = %s", (game_info['uid'],))
             existing_id = cursor.fetchone()
 
             if existing_id:
-                # ID already exists, skip insertion
-                print(f"Record with ID {game_info['uid']} already exists. Skipping insertion.")
+                # Match already exists, skip insertion
+                print(f"Match with UID {game_info['uid']} already exists. Skipping insertion.")
             else:
-                # ID doesn't exist, insert the new record
+                # Match doesn't exist, insert the new record
                 cursor.execute(
-                ("INSERT INTO matches (uid, match_date, match_name, venue, city, state, country) VALUES (%s, %s, %s, %s, %s, %s, %s)"),
+                    "INSERT INTO matches (uid, match_date, match_name, venue, city, state, country) VALUES (%s, %s, %s, %s, %s, %s, %s)",
                     (
                         game_info['uid'],
-                        game_info['date'],
+                        datetime.strptime(game_info['date'], "%d.%m.%Y").date(),
                         game_info['name'],
                         game_info['venue_full_name'],
                         game_info['city'],
@@ -295,18 +316,17 @@ def update_db(games_info):
                         game_info['country'],
                     )
                 )
-                print(f"Record with ID {game_info['uid']} inserted successfully.")
+                print(f"Match with UID {game_info['uid']} inserted successfully.")
 
         # Commit the changes and close the connection
         db_conn.commit()
         cursor.close()
         db_conn.close()
 
-        print("\n")
-        return jsonify({'message': 'Data updated successfully', 'status_code': 200})
+        return {'message': 'Upcoming matches inserted successfully', 'status_code': 200}
 
     except Exception as e:
-        return jsonify({'error_message': str(e), 'status_code': 500})
+        return {'error_message': str(e), 'status_code': 500}
 
 
 @app.route('/upcoming_matches', methods=['GET'])
@@ -326,6 +346,7 @@ def today_matches():
 
     try:
         # Call the get_today_matches function
+        matches_info = get_today_matches()
         matches_info = get_today_matches()
         return jsonify(matches_info)
     except Exception as e:
