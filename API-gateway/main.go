@@ -1116,6 +1116,106 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func getMatchesWeatherForecastTimeoutException(w http.ResponseWriter, r *http.Request) {
+	// Configure Hystrix settings for "getMatches" command
+	hystrix.ConfigureCommand("getMatches", hystrix.CommandConfig{
+		Timeout:               1000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,   // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,   // Error percentage threshold
+	})
+
+	// Configure Hystrix settings for "getWeather" command
+	hystrix.ConfigureCommand("getWeather", hystrix.CommandConfig{
+		Timeout:               1000, // Timeout in milliseconds
+		MaxConcurrentRequests: 10,   // Maximum number of concurrent requests
+		ErrorPercentThreshold: 25,   // Error percentage threshold
+	})
+
+	// Step 1: Get upcoming matches
+	matchesURL := MatchesBalancer() + "/upcoming_matches"
+	var matchesResp *http.Response
+	err := hystrix.Do("getMatches", func() error {
+		resp, err := http.Get(matchesURL)
+		if err != nil {
+			return err
+		}
+		matchesResp = resp
+		return nil
+	}, nil)
+	if err != nil {
+		http.Error(w, "Error making request to matches_ms for upcoming matches", http.StatusInternalServerError)
+		return
+	}
+	defer matchesResp.Body.Close()
+
+	matchesBody, err := io.ReadAll(matchesResp.Body)
+	if err != nil {
+		http.Error(w, "Error reading response from matches_ms for upcoming matches", http.StatusInternalServerError)
+		return
+	}
+	// Parse the matches response
+	var matches []Match // Replace Match with the actual struct type for your matches
+	if err := json.Unmarshal(matchesBody, &matches); err != nil {
+		http.Error(w, "Error parsing upcoming matches response", http.StatusInternalServerError)
+		return
+	}
+
+	// Step 2: Get weather forecast for each location
+	var forecasts []WeatherForecastResponseWithInfo
+	for _, match := range matches {
+		// Skip if city is empty
+		if match.City == "" {
+			continue
+		}
+
+		// Replace spaces with "&" for multi-word cities
+		cityQuery := strings.ReplaceAll(match.City, " ", "-")
+
+		weatherURL := RoundRobinBalancer() + "/weather_forecast?location=" + cityQuery + "&date=" + match.Date
+		var weatherResp *http.Response
+		err := hystrix.Do("getWeather", func() error {
+			resp, err := http.Get(weatherURL)
+			if err != nil {
+				return err
+			}
+			weatherResp = resp
+			return nil
+		}, nil)
+		if err != nil {
+			http.Error(w, "Error making request to weather microservice", http.StatusInternalServerError)
+			return
+		}
+		defer weatherResp.Body.Close()
+
+		weatherBody, err := io.ReadAll(weatherResp.Body)
+		if err != nil {
+			http.Error(w, "Error reading response from weather microservice", http.StatusInternalServerError)
+			return
+		}
+
+		// Parse the weather response
+		var forecast WeatherForecastResponse
+		if err := json.Unmarshal(weatherBody, &forecast); err != nil {
+			fmt.Printf("Error parsing weather forecast response: %v\n", err)
+			fmt.Printf("Response body: %s\n", string(weatherBody))
+			http.Error(w, "Error parsing weather forecast response", http.StatusInternalServerError)
+			return
+		}
+
+		forecasts = append(forecasts, WeatherForecastResponseWithInfo{
+			City:     match.City,
+			UID:      match.UID,
+			Forecast: forecast,
+		})
+	}
+
+	// Step 3: Return the combined forecast to the user
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(forecasts)
+
+}
+
 // checkMicroserviceHealth checks the health of a microservice by sending a simple request
 func checkMicroserviceHealth(endpoints []string) bool {
 
@@ -1144,6 +1244,7 @@ func main() {
 	http.HandleFunc("/meteo_for_future_matches", getMatchesWeatherForecast)
 	http.HandleFunc("/meteo_for_today_matches", getTodayMatchesAndWeather)
 	http.HandleFunc("/past_matches_meteo", getPastMatchesMeteo)
+	http.HandleFunc("/get_meteo_for_future_matches_timeout_exception", getMatchesWeatherForecastTimeoutException)
 
 	http.HandleFunc("/status", healthCheckHandler)
 
