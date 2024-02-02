@@ -1,7 +1,7 @@
 # PAD EXTRA TASK
 App that includes weather forecasts for match locations.
 ### HOW TO RUN
-- First obtain the images from https://hub.docker.com/repository/docker/andreeacvl/pad_extra/general
+- First obtain the images from https://hub.docker.com/repositories/andreeacvl
 - Clone this repository by doing git clone <repo>
 - Create a new network in the project directory by using ```docker network create pad```
 - Run the command ```docker-compose up```
@@ -10,8 +10,8 @@ Use the postman collection of requests provided [here](https://github.com/Andree
 You can find below a short description of how it works.
 
 ### API-s used:
-NHL API - https://rapidapi.com/belchiorarkad-FqvHs2EDOtP/api/nhl-api5
-WeatherAPI.com - https://rapidapi.com/weatherapi/api/weatherapi-com
+- NHL API - https://rapidapi.com/belchiorarkad-FqvHs2EDOtP/api/nhl-api5
+- WeatherAPI.com - https://rapidapi.com/weatherapi/api/weatherapi-com
 
 ### Matches Microservice:
 Is built in flask and used for:
