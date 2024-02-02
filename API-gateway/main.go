@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/afex/hystrix-go/hystrix"
+	"github.com/go-redis/redis/v8"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 )
 
 type WeatherForecastResponse struct {
@@ -106,10 +109,31 @@ func MatchesBalancer() string {
 	return endpointMatches
 }
 
+var redisClient *redis.Client
+
+func init() {
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     "redis-cache.pad:6379",
+		Password: "",
+		DB:       0,
+	})
+}
+
 // ForwardRequest forwards the incoming request to the Flask microservice
 func getWeatherRequest(w http.ResponseWriter, r *http.Request) {
 	// Set the URL of the Flask microservice endpoint
 	//url := "http://weather-hostname.pad:5001/weather_forecast"
+
+	cacheKey := r.URL.Query().Get("location") + "_" + r.URL.Query().Get("date")
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
+	// Set the URL of the Flask microservice endpoint
+
 	url := RoundRobinBalancer() + "/weather_forecast"
 
 	// Get query parameters from the incoming request
@@ -168,6 +192,8 @@ func getWeatherRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
+
 	// Forward the response to the client
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
@@ -177,7 +203,6 @@ func getWeatherRequest(w http.ResponseWriter, r *http.Request) {
 func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 	// Set the URL of the Flask microservice endpoint for current weather
 	//url := "http://weather-hostname.pad:5001/current_weather"
-	url := RoundRobinBalancer() + "/current_weather"
 
 	// Get query parameters from the incoming request
 	city := r.URL.Query().Get("city")
@@ -188,6 +213,20 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine the current date
+	today := time.Now().Format("2006-01-02") // Format: YYYY-MM-DD
+
+	cacheKey := "current_weather_" + city + "_" + today
+
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
+	url := RoundRobinBalancer() + "/current_weather"
 	// Create a new request to the Flask microservice for current weather
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -233,6 +272,8 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
+
 	// Forward the response to the client for current weather
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
@@ -242,7 +283,6 @@ func getCurrentWeather(w http.ResponseWriter, r *http.Request) {
 func getWeatherHistory(w http.ResponseWriter, r *http.Request) {
 	// Set the URL of the Flask microservice endpoint for weather history
 	//url := "http://weather-hostname.pad:5001/weather_history"
-	url := RoundRobinBalancer() + "/weather_history"
 
 	// Get query parameters from the incoming request
 	location := r.URL.Query().Get("location")
@@ -253,6 +293,18 @@ func getWeatherHistory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Location and date are required parameters", http.StatusBadRequest)
 		return
 	}
+
+	// Create a cache key based on location and date
+	cacheKey := "weather_history_" + location + "_" + date
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
+	url := RoundRobinBalancer() + "/weather_history"
 
 	// Create a new request to the Flask microservice for weather history
 	req, err := http.NewRequest("GET", url, nil)
@@ -300,6 +352,9 @@ func getWeatherHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cache the result in Redis with an expiration time
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
+
 	// Forward the response to the client for weather history
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
@@ -309,7 +364,6 @@ func getWeatherHistory(w http.ResponseWriter, r *http.Request) {
 func getAstroInfo(w http.ResponseWriter, r *http.Request) {
 	// Set the URL of the Flask microservice endpoint for astro information
 	//url := "http://weather-hostname.pad:5001/astro"
-	url := RoundRobinBalancer() + "/astro"
 
 	// Get query parameters from the incoming request
 	city := r.URL.Query().Get("city")
@@ -320,6 +374,19 @@ func getAstroInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "City and date are required parameters", http.StatusBadRequest)
 		return
 	}
+
+	// Create a cache key based on city and date
+	cacheKey := "astro_info_" + city + "_" + date
+
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
+	url := RoundRobinBalancer() + "/astro"
 
 	// Create a new request to the Flask microservice for astro information
 	req, err := http.NewRequest("GET", url, nil)
@@ -367,6 +434,9 @@ func getAstroInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cache the result in Redis with an expiration time
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
+
 	// Forward the response to the client for astro information
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
@@ -374,6 +444,18 @@ func getAstroInfo(w http.ResponseWriter, r *http.Request) {
 
 // GetUpcomingMatches connects to the matches microservice's /upcoming_matches endpoint
 func getUpcomingMatches(w http.ResponseWriter, r *http.Request) {
+	// Determine today's date
+	today := time.Now().Format("2006-01-02") // Format: YYYY-MM-DD
+	// Create a cache key based on today's date
+	cacheKey := "upcoming_matches_" + today
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
 	url := MatchesBalancer() + "/upcoming_matches"
 
 	// Wrap the HTTP request in a Hystrix command
@@ -385,7 +467,7 @@ func getUpcomingMatches(w http.ResponseWriter, r *http.Request) {
 
 	var resp *http.Response
 	var body []byte
-	err := hystrix.Do("getUpcomingMatches", func() error {
+	err = hystrix.Do("getUpcomingMatches", func() error {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return err
@@ -412,6 +494,7 @@ func getUpcomingMatches(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error making request to matches microservice for upcoming matches", http.StatusInternalServerError)
 		return
 	}
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
 
 	// Forward the response to the client
 	w.WriteHeader(resp.StatusCode)
@@ -420,6 +503,20 @@ func getUpcomingMatches(w http.ResponseWriter, r *http.Request) {
 
 // GetTodayMatches connects to the matches microservice's /today_matches endpoint
 func getTodayMatches(w http.ResponseWriter, r *http.Request) {
+	// Determine today's date
+	today := time.Now().Format("2006-01-02") // Format: YYYY-MM-DD
+
+	// Create a cache key based on today's date
+	cacheKey := "today_matches_" + today
+
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
 	url := MatchesBalancer() + "/today_matches"
 
 	// Wrap the HTTP request in a Hystrix command
@@ -431,7 +528,7 @@ func getTodayMatches(w http.ResponseWriter, r *http.Request) {
 
 	var resp *http.Response
 	var body []byte
-	err := hystrix.Do("getTodayMatches", func() error {
+	err = hystrix.Do("getTodayMatches", func() error {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return err
@@ -459,6 +556,9 @@ func getTodayMatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cache the result in Redis with an expiration time
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
+
 	// Forward the response to the client
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
@@ -466,7 +566,6 @@ func getTodayMatches(w http.ResponseWriter, r *http.Request) {
 
 // GetPastMatches connects to the matches microservice's /past_matches endpoint
 func getPastMatches(w http.ResponseWriter, r *http.Request) {
-	url := MatchesBalancer() + "/past_matches"
 
 	// Get query parameters from the incoming request
 	targetDate := r.URL.Query().Get("target_date")
@@ -477,6 +576,18 @@ func getPastMatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create a cache key based on the target date
+	cacheKey := "past_matches_" + targetDate
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
+	url := MatchesBalancer() + "/past_matches"
+
 	// Wrap the HTTP request in a Hystrix command
 	hystrix.ConfigureCommand("getPastMatches", hystrix.CommandConfig{
 		Timeout:               10000, // Timeout in milliseconds
@@ -486,7 +597,7 @@ func getPastMatches(w http.ResponseWriter, r *http.Request) {
 
 	var resp *http.Response
 	var body []byte
-	err := hystrix.Do("getPastMatches", func() error {
+	err = hystrix.Do("getPastMatches", func() error {
 		// Create a new request to the matches microservice for past matches
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -521,6 +632,8 @@ func getPastMatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
+
 	// Forward the response to the client for past matches
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
@@ -528,7 +641,6 @@ func getPastMatches(w http.ResponseWriter, r *http.Request) {
 
 // GetTeamInfo connects to the matches microservice's /team_info endpoint
 func getTeamInfo(w http.ResponseWriter, r *http.Request) {
-	url := MatchesBalancer() + "/team_info"
 
 	// Get query parameters from the incoming request
 	gameID := r.URL.Query().Get("game_id")
@@ -539,6 +651,19 @@ func getTeamInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create a cache key based on the game ID
+	cacheKey := "team_info_" + gameID
+
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
+	url := MatchesBalancer() + "/team_info"
+
 	// Wrap the HTTP request in a Hystrix command
 	hystrix.ConfigureCommand("getTeamInfo", hystrix.CommandConfig{
 		Timeout:               8000, // Timeout in milliseconds
@@ -548,7 +673,7 @@ func getTeamInfo(w http.ResponseWriter, r *http.Request) {
 
 	var resp *http.Response
 	var body []byte
-	err := hystrix.Do("getTeamInfo", func() error {
+	err = hystrix.Do("getTeamInfo", func() error {
 		// Create a new request to the matches microservice for team info
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -582,6 +707,7 @@ func getTeamInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error making request to matches microservice for team info", http.StatusInternalServerError)
 		return
 	}
+	redisClient.Set(context.Background(), cacheKey, string(body), time.Hour)
 
 	// Forward the response to the client for team info
 	w.WriteHeader(resp.StatusCode)
@@ -603,10 +729,24 @@ func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
 		ErrorPercentThreshold: 25,    // Error percentage threshold
 	})
 
+	// Determine today's date
+	today := time.Now().Format("2006-01-02") // Format: YYYY-MM-DD
+
+	// Create a cache key based on today's date
+	cacheKey := "matches_weather_forecast_" + today
+
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
 	// Step 1: Get upcoming matches
 	matchesURL := MatchesBalancer() + "/upcoming_matches"
 	var matchesResp *http.Response
-	err := hystrix.Do("getMatches", func() error {
+	err = hystrix.Do("getMatches", func() error {
 		resp, err := http.Get(matchesURL)
 		if err != nil {
 			return err
@@ -641,7 +781,7 @@ func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Replace spaces with "&" for multi-word cities
-		cityQuery := strings.ReplaceAll(match.City, " ", "&")
+		cityQuery := strings.ReplaceAll(match.City, " ", "-")
 
 		weatherURL := RoundRobinBalancer() + "/weather_forecast?location=" + cityQuery + "&date=" + match.Date
 		var weatherResp *http.Response
@@ -685,6 +825,10 @@ func getMatchesWeatherForecast(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(forecasts)
+
+	// Cache the result in Redis with an expiration time
+	redisClient.Set(context.Background(), cacheKey, string(matchesBody), time.Hour)
+
 }
 
 func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
@@ -695,9 +839,23 @@ func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
 		ErrorPercentThreshold: 25,    // Error percentage threshold for circuit breaker
 	})
 
+	// Step 1: Determine today's date
+	today := time.Now().Format("2006-01-02") // Format: YYYY-MM-DD
+
+	// Create a cache key based on today's date
+	cacheKey := "today_matches_and_weather_" + today
+
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
 	// Step 1: Get today's matches using Hystrix
 	var matchesResp *http.Response
-	err := hystrix.Do("get-today-matches", func() error {
+	err = hystrix.Do("get-today-matches", func() error {
 		var err error
 		matchesURL := MatchesBalancer() + "/today_matches"
 		matchesResp, err = http.Get(matchesURL)
@@ -744,7 +902,7 @@ func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
 
 	for city := range citiesMap {
 		// Replace spaces with "&" for multi-word cities
-		cityQuery := strings.ReplaceAll(city, " ", "&")
+		cityQuery := strings.ReplaceAll(city, " ", "-")
 
 		// Use Hystrix for the weather request
 		err := hystrix.Do("get-current-weather", func() error {
@@ -797,6 +955,9 @@ func getTodayMatchesAndWeather(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
+
+	// Step 7: Cache the result in Redis with an expiration time
+	redisClient.Set(context.Background(), cacheKey, string(matchesBody), time.Hour)
 }
 
 func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
@@ -809,6 +970,17 @@ func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create a cache key based on the target date
+	cacheKey := "past_matches_meteo_" + targetDate
+
+	// Check if the result is already in the cache
+	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
+	if err == nil {
+		// If cached result is found, return it
+		w.Write([]byte(cachedResult))
+		return
+	}
+
 	// Configure Hystrix for the "get-past-matches" command
 	hystrix.ConfigureCommand("get-past-matches", hystrix.CommandConfig{
 		Timeout:               10000, // Timeout in milliseconds
@@ -818,7 +990,7 @@ func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
 
 	// Step 1: Get past matches using Hystrix
 	var matchesResp *http.Response
-	err := hystrix.Do("get-past-matches", func() error {
+	err = hystrix.Do("get-past-matches", func() error {
 		var err error
 		matchesURL := MatchesBalancer() + "/past_matches?target_date=" + targetDate
 		matchesResp, err = http.Get(matchesURL)
@@ -907,6 +1079,8 @@ func getPastMatchesMeteo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
+
+	redisClient.Set(context.Background(), cacheKey, string(matchesBody), time.Hour)
 }
 
 // HealthCheckResponse represents the response for the health check endpoint
