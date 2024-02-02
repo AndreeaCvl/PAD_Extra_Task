@@ -116,6 +116,8 @@ Every time before making a request, the program checks if there is any data save
 ### Prometheus + Grafana
 Prometheus is connected to both microservices and Grafana is ocnnected to Prometheus for metrics and statistics.
 To check the metrics, you can go on the page http://localhost:3000/login, log in using admin as a username and a password, then go to the explore tab from the left menue. Here you can create a new query as in the image below and you must see the statistics.
+![query](https://github.com/AndreeaCvl/PAD_Extra_Task/blob/main/img/Screenshot_4.jpg)
+![stats](https://github.com/AndreeaCvl/PAD_Extra_Task/blob/main/img/Screenshot_2.jpg)
 
 ### Postman Collenction
 It can be found as a json file in the repo.
