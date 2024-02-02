@@ -1,0 +1,339 @@
+{
+	"info": {
+		"_postman_id": "2818629c-d461-44d2-95d4-b80344b5542e",
+		"name": "PAD EXTRA TASK",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "15814447"
+	},
+	"item": [
+		{
+			"name": "Matches-ms",
+			"item": [
+				{
+					"name": "Upcoming matches",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Today Matches",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Past matches",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "get team info",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Status",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Get DB Data",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Weather-ms",
+			"item": [
+				{
+					"name": "weather forecast by location",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "[{\r\n            \"city\": \"Detroit\",\r\n            \"country\": \"USA\",\r\n            \"date\": \"Mon, 22 Jan 2024 00:00:00 GMT\",\r\n            \"name\": \"Tampa Bay Lightning at Detroit Red Wings\",\r\n            \"state\": \"MI\",\r\n            \"uid\": \"s:70~l:90~e:401559948\",\r\n            \"venue\": \"Little Caesars Arena\"\r\n        },\r\n        {\r\n            \"city\": \"Elmont\",\r\n            \"country\": \"USA\",\r\n            \"date\": \"Mon, 22 Jan 2024 00:00:00 GMT\",\r\n            \"name\": \"Dallas Stars at New York Islanders\",\r\n            \"state\": \"NY\",\r\n            \"uid\": \"s:70~l:90~e:401559950\",\r\n            \"venue\": \"UBS Arena\"\r\n        },\r\n        {\r\n            \"city\": \"Anaheim\",\r\n            \"country\": \"USA\",\r\n            \"date\": \"Mon, 22 Jan 2024 00:00:00 GMT\",\r\n            \"name\": \"New York Rangers at Anaheim Ducks\",\r\n            \"state\": \"CA\",\r\n            \"uid\": \"s:70~l:90~e:401559951\",\r\n            \"venue\": \"Honda Center\"\r\n        }]",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:5001/get_weather_by_location",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "5001",
+							"path": [
+								"get_weather_by_location"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "get Current Weather",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Weather history",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "get Astro",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Status",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "Get DB data",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Gateway",
+			"item": [
+				{
+					"name": "Weather_ms",
+					"item": [
+						{
+							"name": "Get weather forecast",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/weather/forward_weather_forecast?location=London&date=01.02.2024",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"weather",
+										"forward_weather_forecast"
+									],
+									"query": [
+										{
+											"key": "location",
+											"value": "London"
+										},
+										{
+											"key": "date",
+											"value": "01.02.2024"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get current weather",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "pad",
+									"host": [
+										"pad"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get weather history",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "pad",
+									"host": [
+										"pad"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get astro",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/weather/get_astro?city=new-york&date=06.02.2024",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"weather",
+										"get_astro"
+									],
+									"query": [
+										{
+											"key": "city",
+											"value": "new-york"
+										},
+										{
+											"key": "date",
+											"value": "06.02.2024"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Matches_ms",
+					"item": [
+						{
+							"name": "Get upcoming matches",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "pad",
+									"host": [
+										"pad"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get today matches",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "pad",
+									"host": [
+										"pad"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get past matches",
+							"request": {
+								"method": "GET",
+								"header": []
+							},
+							"response": []
+						},
+						{
+							"name": "Get team info",
+							"request": {
+								"method": "GET",
+								"header": []
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Aggregation Endpoints",
+					"item": [
+						{
+							"name": "Get Meteo Forecast for Matches",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/meteo_for_future_matches",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"meteo_for_future_matches"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Today Meteo for Matches",
+							"request": {
+								"method": "GET",
+								"header": []
+							},
+							"response": []
+						},
+						{
+							"name": "Get Meteo for Past Matches",
+							"request": {
+								"method": "GET",
+								"header": []
+							},
+							"response": []
+						},
+						{
+							"name": "TIMEOUT EXCEPTION Get Meteo Forecast for Matches",
+							"request": {
+								"method": "GET",
+								"header": []
+							},
+							"response": []
+						},
+						{
+							"name": "status",
+							"request": {
+								"method": "GET",
+								"header": []
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		}
+	]
+}
