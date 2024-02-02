@@ -1,21 +1,21 @@
 version: '3'
 services:
   matches:
-    image: matches-ms
+    image: andreeacvl/matches-ms
     ports:
       - "5000:5000"
     networks:
       - pad
     hostname: matches-hostname
   matches2:
-    image: matches-ms
+    image: andreeacvl/matches-ms
     ports:
       - "5002:5000"
     networks:
       - pad
     hostname: matches-hostname-2
   matches3:
-    image: matches-ms
+    image: andreeacvl/matches-ms
     ports:
       - "5004:5000"
     networks:
@@ -36,21 +36,21 @@ services:
     volumes:
       - ./init-scripts-matches:/docker-entrypoint-initdb.d
   weather:
-    image: weather-ms
+    image: andreeacvl/weather-ms
     ports:
       - "5001:5001"
     networks:
       - pad
     hostname: weather-hostname
   weather2:
-    image: weather-ms
+    image: andreeacvl/weather-ms
     ports:
       - "5003:5001"
     networks:
       - pad
     hostname: weather-hostname-2
   weather3:
-    image: weather-ms
+    image: andreeacvl/weather-ms
     ports:
       - "5005:5001"
     networks:
@@ -83,7 +83,7 @@ services:
     ports:
       - "3000:3000"
   gateway:
-    image: gateway
+    image: andreeacvl/gateway
     ports:
       - "8080:8080"
     networks:

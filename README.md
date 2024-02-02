@@ -1,11 +1,12 @@
 # PAD EXTRA TASK
 App that includes weather forecasts for match locations.
 ### HOW TO RUN
-First obtain the images from https://hub.docker.com/repository/docker/andreeacvl/pad_extra_task/general
-Clone this repository by doing git clone <repo>
-Run the command docker-compose up
+- First obtain the images from https://hub.docker.com/repository/docker/andreeacvl/pad_extra/general
+- Clone this repository by doing git clone <repo>
+- Create a new network in the project directory by using ```docker network create pad```
+- Run the command ```docker-compose up```
 
-Use the postman collection of requests provided here to test the app. 
+Use the postman collection of requests provided [here](https://github.com/AndreeaCvl/PAD_Extra_Task/blob/main/PAD%20EXTRA%20TASK.postman_collection.json) to test the app. 
 You can find below a short description of how it works.
 
 ### API-s used:
@@ -32,7 +33,7 @@ CREATE TABLE matches (
   country VARCHAR (100) NOT NULL
 );
 ```
-In the database are added the upcoming matches.
+In the database are added the upcoming matches. After unning the request to get upcoming matches, you can use the "Get DB Data" request to convince yourself the content was added to the database.
 This microservice features a '/status' endpoint.
 
 
@@ -53,7 +54,7 @@ CREATE TABLE weather (
   hourly_weather JSONB
 );
 ```
-In the database I add the weather forecast.
+In the database I add the weather forecast. In the database is added the weather forecast for a given location and date. After running the request to get the weather forecast, you can use the "Get DB Data" request to convince yourself the content was added to the database.
 This microservice also features a '/status' endpoint.
 
 ### Gateway
@@ -99,10 +100,10 @@ hystrix.ConfigureCommand("getAstroInfo", hystrix.CommandConfig{
 })
 ```
 Then did the request using the configuration. I usually set big values for timeout, to give the services time to return the answer, since there is lots of data to be parsed which may happen pretty slow.
-
+You can test the timeout by using the request "TIMEOUT EXCEPTION Get Meteo Forecast for Matches" in Postman (The time is not enough for the request).
 ##### Redis Cache
 Every time before making a request, the program checks if there is any data saved in the redis cache db. The cache key is created by taking into account the parameters a request receives. If the request doesn't receive any parameters but relies on the today's date - it is also taken into account.
-```
+```go
 	cacheKey := "past_matches_" + targetDate
 	// Check if the result is already in the cache
 	cachedResult, err := redisClient.Get(context.Background(), cacheKey).Result()
@@ -112,12 +113,13 @@ Every time before making a request, the program checks if there is any data save
 		return
 	}
 ```
-
+You will notice, especially for the requests which are more time consuming, the difference in time when sending a request with the same parameters for the first vs for the second time.
 ### Prometheus + Grafana
 Prometheus is connected to both microservices and Grafana is ocnnected to Prometheus for metrics and statistics.
 To check the metrics, you can go on the page http://localhost:3000/login, log in using admin as a username and a password, then go to the explore tab from the left menue. Here you can create a new query as in the image below and you must see the statistics.
 ![query](https://github.com/AndreeaCvl/PAD_Extra_Task/blob/main/img/Screenshot_4.jpg)
 ![stats](https://github.com/AndreeaCvl/PAD_Extra_Task/blob/main/img/Screenshot_2.jpg)
 
-### Postman Collenction
+### Postman Collection
 It can be found as a json file in the repo.
+https://github.com/AndreeaCvl/PAD_Extra_Task/blob/main/PAD%20EXTRA%20TASK.postman_collection.json
