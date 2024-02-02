@@ -65,7 +65,7 @@ Build in Golang. Features a Load Blancer and implements redis cache for all endp
 
 It also contains a status endpoint which checks if all replicas of the microservices and the gateway itself are alive, and returns the status (OK/Unhealthy).
 
-##### Load Balancer:
+#### Load Balancer:
 It is defined in the gateway. I all the addresses of the replicas in 2 lists -  weatherHostnames and matchesHostnames. And 2 functions which must give the next weather/matches endpoint.
 ```go
 var (
@@ -89,7 +89,7 @@ Then, when making a request, the endpoint address if found in this way:
 ```	go
 url := RoundRobinBalancer() + "/endpoint_name"
 ```
-##### Concurrent task limit and Task Timeout
+#### Concurrent task limit and Task Timeout
 Those are set with the Hystrix - a fault tolerance library developed by netflix.
 I needed to set the configuration for the request using the following parameters:
 ```go 
@@ -101,7 +101,7 @@ hystrix.ConfigureCommand("getAstroInfo", hystrix.CommandConfig{
 ```
 Then did the request using the configuration. I usually set big values for timeout, to give the services time to return the answer, since there is lots of data to be parsed which may happen pretty slow.
 You can test the timeout by using the request "TIMEOUT EXCEPTION Get Meteo Forecast for Matches" in Postman (The time is not enough for the request).
-##### Redis Cache
+#### Redis Cache
 Every time before making a request, the program checks if there is any data saved in the redis cache db. The cache key is created by taking into account the parameters a request receives. If the request doesn't receive any parameters but relies on the today's date - it is also taken into account.
 ```go
 	cacheKey := "past_matches_" + targetDate
